@@ -1,3 +1,5 @@
+require('dotenv').config()
+
 const express = require('express')
 const app = express()
 
@@ -11,6 +13,20 @@ const cors = require('cors')
 app.use(cors())
 
 app.use(express.static('dist'))
+
+const errorHandler = (error, request, response, next) => {
+    console.error(error.message)
+  
+    if (error.name === 'CastError') {
+      return response.status(400).send({ error: 'malformatted id' })
+    }
+  
+    next(error)
+  }
+
+app.use(errorHandler)
+
+const Contact = require('./models/contact')
 
 let persons = [
     {
@@ -48,29 +64,24 @@ app.get('/info', (request, response) => {
 })
 
 app.get('/api/persons', (request, response) => {
-    response.json(persons)
-})
+    Contact.find({}).then(contacts => {
+      response.json(contacts)
+    })
+  })
 
 app.get('/api/persons/:id', (request, response) =>  {
-    const id = Number(request.params.id)
-    const person = persons.find(person => person.id === id)
-
-    if (person) {
-        response.json(person)
-    } else {
-        response.status(404).end()
-    }
+    Contact.findById(request.params.id).then(contact => {
+        response.json(contact)
+      })
 })
 
-app.delete('/api/persons/:id', (request, response) => {
-    const id = Number(request.params.id)
-    persons = persons.filter(person => {
-        console.log(person.id + " " + id)
-        return person.id != id
-    })
-
-    response.status(204).end()
-})
+app.delete('/api/persons/:id', (request, response, next) => {
+    Contact.findByIdAndDelete(request.params.id)
+      .then(result => {
+        response.status(204).end()
+      })
+      .catch(error => next(error))
+  })
 
 const sendError = (response, code, text) => {
     response.status(code).json({
@@ -93,19 +104,18 @@ app.post('/api/persons', (request, response) => {
     } else if (persons.filter(x => x.name === body.name).length > 0) {
         sendError(response, 300, 'contact person name already exists')
     } else {
-        const person = {
+        const contact = new Contact({
             name: body.name,
-            number: body.number,
-            id: generateId()
-        }
+            number: body.number
+        })
     
-        persons = persons.concat(person)
-    
-        response.json(person)
+        contact.save().then(savedContact => {
+            response.json(savedContact)
+        })
     }
 })
 
-const PORT = 3001
+const PORT = process.env.PORT
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
 })
